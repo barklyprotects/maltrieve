@@ -216,9 +216,11 @@ def main():
                         help="Sort files by MIME type", action="store_true", default=False)
     parser.add_argument("-a", "--aws",
                         help="Dump the files to an S3 bucket", action="store_true", default=False)
-    parser.add_argument("--aws_access_key", help="Your AWS Access Key ID", default=False)
-    parser.add_argument("--aws_secret_key", help="Your AWS Secret Key", default=False)
-    parser.add_argument("--aws_bucket", help="AWS Bucker for storage", default=False)
+    parser.add_argument("-c", "--config",
+                        help="Configuration File", default="maltrieve.cfg")
+    parser.add_argument("--aws_access_key", help="Your AWS Access Key ID")
+    parser.add_argument("--aws_secret_key", help="Your AWS Secret Key")
+    parser.add_argument("--aws_bucket", help="AWS Bucker for storage")
 
     global cfg
     cfg = dict()
@@ -226,7 +228,7 @@ def main():
 
     global config
     config = ConfigParser.ConfigParser()
-    config.read('maltrieve.cfg')
+    config.read(args.config)
 
     if args.logfile or config.get('Maltrieve', 'logfile'):
         if args.logfile:
