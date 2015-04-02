@@ -31,23 +31,23 @@ import resource
 import sys
 import tempfile
 from urlparse import urlparse
-
 import feedparser
 import grequests
 import magic
 import requests
 from bs4 import BeautifulSoup
+from boto.s3.connection import S3Connection
+from boto.s3.key import Key
 
-
-class config(object):
+class Config(object):
 
     """ Class for holding global configuration setup """
 
-    def __init__(self, args, filename='maltrieve.cfg'):
+    def __init__(self, args):
         self.configp = ConfigParser.ConfigParser()
-        self.configp.read(filename)
+        self.configp.read(args.config)
 
-        if args.logfile or self.configp.get('Maltrieve', 'logfile'):
+        if args.logfile or self.configp.has_option('Maltrieve', 'logfile'):
             if args.logfile:
                 self.logfile = args.logfile
             else:
@@ -57,8 +57,7 @@ class config(object):
                                 datefmt='%Y-%m-%d %H:%M:%S')
         else:
             logging.basicConfig(level=logging.DEBUG,
-                                format='%(asctime)s %(thread)d %(message)s',
-                                datefmt='%Y-%m-%d %H:%M:%S')
+                                format='%(asctime)s %(levelname)s %(thread)d %(message)s')
         if args.proxy:
             self.proxy = {'http': args.proxy}
         elif self.configp.has_option('Maltrieve', 'proxy'):
@@ -117,6 +116,21 @@ class config(object):
         self.cuckoo = args.cuckoo or self.configp.has_option('Maltrieve', 'cuckoo')
         self.viper = args.viper or self.configp.has_option('Maltrieve', 'viper')
 
+        # override Amazon options if specified on command line
+        if self.configp.has_option('Amazon', 'bucket'):
+            self.aws_bucket = self.configp.get('Amazon', 'bucket')
+        if args.aws_bucket:
+            self.aws_bucket = args.aws_bucket
+        if self.configp.has_option('Amazon', 'AWS_ACCESS_KEY'):
+            self.aws_access_key = self.configp.get('Amazon', 'AWS_ACCESS_KEY')
+        if args.aws_access_key:
+            self.aws_access_key = args.aws_access_key
+        if self.configp.has_option('Amazon', 'AWS_SECRET_KEY'):
+            self.aws_secret_key = self.configp.get('Amazon', 'AWS_SECRET_KEY')
+        if args.aws_secret_key:
+            self.aws_secret_key = args.aws_secret_key
+
+
         # CRITs
         if args.crits or self.configp.has_option('Maltrieve', 'crits'):
             self.crits = args.crits or self.configp.get('Maltrieve', 'crits')
@@ -128,6 +142,7 @@ class config(object):
 
 
 def upload_crits(response, md5, cfg):
+    global domain_response_data, domain_response_data, sample_response_data
     if response:
         url_tag = urlparse(response.url)
         mime_type = magic.from_buffer(response.content, mime=True)
@@ -205,7 +220,7 @@ def upload_crits(response, md5, cfg):
 
         # Create a relationship for the sample and domain
         url = "{srv}/api/v1/relationships/".format(srv=cfg.crits)
-        if (inserted_sample and inserted_domain):
+        if inserted_sample and inserted_domain:
             relationship_data = {
                 'api_key': cfg.crits_key,
                 'username': cfg.crits_user,
@@ -291,6 +306,28 @@ def upload_viper(response, md5, cfg):
             return True
 
 
+def upload_s3(response, md5,cfg):
+    try:
+        conn = S3Connection(cfg.aws_access_key, cfg.aws_secret_key)
+        bucket = conn.create_bucket(cfg.aws_bucket)
+        # we store based on 1024K boundaries
+        data = response.content
+        mime_type = magic.from_buffer(data, mime=True)
+        prefix = len(data) // 1024000
+
+        key = str(prefix) + "/" + mime_type + "/" + md5
+        aws_key = Key(bucket)
+        aws_key.key = key
+        aws_key.content_type = mime_type
+        aws_key.set_contents_from_string(data)
+        logging.info("Submitted %s to Amazon S3", key)
+    except:
+        logging.info("Could not store sample in s3")
+        return False
+    else:
+        return True
+
+
 def save_malware(response, cfg):
     url = response.url
     data = response.content
@@ -322,6 +359,8 @@ def save_malware(response, cfg):
         stored = upload_viper(response, md5, cfg) or stored
     if cfg.crits:
         stored = upload_crits(response, md5, cfg) or stored
+    if cfg.aws_bucket:
+        stored = upload_s3(response, md5, cfg) or stored
     # else save to disk
     if not stored:
         if cfg.sort_mime:
@@ -351,7 +390,7 @@ def process_xml_list_desc(response):
             url = desc.split(' ')[4].rstrip(',')
         url = re.sub('&amp;', '&', url)
         if not re.match('http', url):
-            url = 'http://' + url
+            url += 'http://'
         urls.add(url)
 
     return urls
@@ -402,6 +441,10 @@ def setup_args(args):
                         help="Enable Cuckoo analysis", action="store_true", default=False)
     parser.add_argument("-s", "--sort_mime",
                         help="Sort files by MIME type", action="store_true", default=False)
+    parser.add_argument("--aws_access_key", help="Your AWS Access Key ID")
+    parser.add_argument("--aws_secret_key", help="Your AWS Secret Key")
+    parser.add_argument("--aws_bucket", help="AWS Bucker for storage")
+    parser.add_argument("--config", help="Maltrieve Configuration File",default='maltrieve.cfg')
 
     return parser.parse_args(args)
 
@@ -412,7 +455,7 @@ def main():
     past_urls = set()
 
     args = setup_args(sys.argv[1:])
-    cfg = config(args, 'maltrieve.cfg')
+    cfg = Config(args)
 
     if cfg.proxy:
         logging.info('Using proxy %s', cfg.proxy)

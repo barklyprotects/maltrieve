@@ -21,6 +21,7 @@ setup(name='maltrieve',
           'pytest',
           'pytest-cov',
           'coveralls'
+          'boto==3.36.0'
       ],
       package_dir={'maltrieve': 'src'},
       packages=['maltrieve'],
