@@ -32,5 +32,5 @@ RUN git clone https://github.com/cylentsystems/maltrieve.git && \
   cd maltrieve && \
   pip install -r requirements.txt && \
   chown -R maltrieve:maltrieve /home/maltrieve
-
+COPY maltrieve.cfg /home/maltrieve/maltrieve.cfg
 CMD ["/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"]
