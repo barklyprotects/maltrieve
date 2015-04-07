@@ -20,7 +20,7 @@ setup(name='maltrieve',
           'pre-commit',
           'pytest',
           'pytest-cov',
-          'coveralls'
+          'coveralls',
           'boto==3.36.0'
       ],
       package_dir={'maltrieve': 'src'},
