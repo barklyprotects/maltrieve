@@ -28,7 +28,7 @@ RUN apt-get update && \
   useradd -r -g maltrieve -d /home/maltrieve -s /sbin/nologin -c "Maltrieve User" maltrieve
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 WORKDIR /home
-RUN git clone https://github.com/cylentsystems/maltrieve.git && \
+RUN git clone -b dev https://github.com/cylentsystems/maltrieve.git && \
   cd maltrieve && \
   pip install -r requirements.txt && \
   chown -R maltrieve:maltrieve /home/maltrieve
