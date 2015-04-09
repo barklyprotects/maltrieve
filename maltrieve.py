@@ -321,8 +321,8 @@ def upload_s3(response, md5,cfg):
         aws_key.content_type = mime_type
         aws_key.set_contents_from_string(data)
         logging.info("Submitted %s to Amazon S3", key)
-    except:
-        logging.info("Could not store sample in s3")
+    except Exception, e:
+        logging.info("Could not store sample in s3: "+e.message)
         return False
     else:
         return True
