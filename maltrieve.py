@@ -132,9 +132,14 @@ class Config(object):
         if args.aws_secret_key:
             self.aws_secret_key = args.aws_secret_key
 
-        if args.delay:
-            self.delay = args.delay;
 
+        #handle scheduler
+        if self.configp.has_option('Maltrieve','scheduler'):
+            self.scheduler = self.configp.get('Maltrieve','scheduler')
+            if self.configp.has_option('Maltrieve','sched_frequency'):
+                self.sched_frequency = self.configp.get('Maltrieve','sched_frequency')
+            else:
+                self.sched_frequency = 3600
 
         # CRITs
         if args.crits or self.configp.has_option('Maltrieve', 'crits'):
@@ -444,7 +449,6 @@ def setup_args(args):
                         action="store_true", default=False)
     parser.add_argument("-c", "--cuckoo",
                         help="Enable Cuckoo analysis", action="store_true", default=False)
-    parser.add_argument("--delay",help="Process new malware every <delay> second")
     parser.add_argument("-s", "--sort_mime",
                         help="Sort files by MIME type", action="store_true", default=False)
     parser.add_argument("--aws_access_key", help="Your AWS Access Key ID")
@@ -541,8 +545,8 @@ def main():
         with open('urls.obj', 'rb') as urlfile:
             past_urls = pickle.load(urlfile)
 
-    if args.delay:
-        task(scheduler, int(args.delay), process_urls, (cfg, past_urls,hashes))
+    if cfg.scheduler:
+        task(scheduler, int(cfg.sched_frequency), process_urls, (cfg, past_urls,hashes))
         scheduler.run()
     else:
         process_urls(cfg, past_urls,hashes)
