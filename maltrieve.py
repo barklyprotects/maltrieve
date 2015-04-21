@@ -35,6 +35,8 @@ import feedparser
 import grequests
 import magic
 import requests
+import sched
+import time
 from bs4 import BeautifulSoup
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
@@ -130,6 +132,14 @@ class Config(object):
         if args.aws_secret_key:
             self.aws_secret_key = args.aws_secret_key
 
+
+        #handle scheduler
+        if self.configp.has_option('Maltrieve','scheduler'):
+            self.scheduler = self.configp.get('Maltrieve','scheduler')
+            if self.configp.has_option('Maltrieve','sched_frequency'):
+                self.sched_frequency = self.configp.get('Maltrieve','sched_frequency')
+            else:
+                self.sched_frequency = 3600
 
         # CRITs
         if args.crits or self.configp.has_option('Maltrieve', 'crits'):
@@ -448,38 +458,11 @@ def setup_args(args):
 
     return parser.parse_args(args)
 
+def task(scheduler,interval,action,args=()):
+    action(*args)
+    scheduler.enter(interval,1,task,(scheduler,interval,action,args))
 
-def main():
-    resource.setrlimit(resource.RLIMIT_NOFILE, (2048, 2048))
-    hashes = set()
-    past_urls = set()
-
-    args = setup_args(sys.argv[1:])
-    cfg = Config(args)
-
-    if cfg.proxy:
-        logging.info('Using proxy %s', cfg.proxy)
-        my_ip = requests.get('http://ipinfo.io/ip', proxies=cfg.proxy).text
-        logging.info('External sites see %s', my_ip)
-        print 'External sites see {ip}'.format(ip=my_ip)
-
-    if os.path.exists('hashes.json'):
-        with open('hashes.json', 'rb') as hashfile:
-            hashes = json.load(hashfile)
-    elif os.path.exists('hashes.obj'):
-        with open('hashes.obj', 'rb') as hashfile:
-            hashes = pickle.load(hashfile)
-
-    if os.path.exists('urls.json'):
-        try:
-            with open('urls.json', 'rb') as urlfile:
-                past_urls = set(json.load(urlfile))
-        except ValueError:
-            pass
-    elif os.path.exists('urls.obj'):
-        with open('urls.obj', 'rb') as urlfile:
-            past_urls = pickle.load(urlfile)
-
+def process_urls(cfg,past_urls,hashes):
     print "Processing source URLs"
 
     # TODO: Replace with plugins
@@ -519,7 +502,7 @@ def main():
 
     print "Completed downloads"
 
-    # TODO: move to functions
+     # TODO: move to functions
     if past_urls:
         logging.info('Dumping past URLs to file')
         with open('urls.json', 'w') as urlfile:
@@ -528,6 +511,47 @@ def main():
     if hashes:
         with open('hashes.json', 'w') as hashfile:
             json.dump(hashes, hashfile)
+
+
+def main():
+    resource.setrlimit(resource.RLIMIT_NOFILE, (2048, 2048))
+    hashes = set()
+    past_urls = set()
+    scheduler = sched.scheduler(time.time,time.sleep)
+
+    args = setup_args(sys.argv[1:])
+    cfg = Config(args)
+
+    if cfg.proxy:
+        logging.info('Using proxy %s', cfg.proxy)
+        my_ip = requests.get('http://ipinfo.io/ip', proxies=cfg.proxy).text
+        logging.info('External sites see %s', my_ip)
+        print 'External sites see {ip}'.format(ip=my_ip)
+
+    if os.path.exists('hashes.json'):
+        with open('hashes.json', 'rb') as hashfile:
+            hashes = json.load(hashfile)
+    elif os.path.exists('hashes.obj'):
+        with open('hashes.obj', 'rb') as hashfile:
+            hashes = pickle.load(hashfile)
+
+    if os.path.exists('urls.json'):
+        try:
+            with open('urls.json', 'rb') as urlfile:
+                past_urls = set(json.load(urlfile))
+        except ValueError:
+            pass
+    elif os.path.exists('urls.obj'):
+        with open('urls.obj', 'rb') as urlfile:
+            past_urls = pickle.load(urlfile)
+
+    if cfg.scheduler:
+        task(scheduler, int(cfg.sched_frequency), process_urls, (cfg, past_urls,hashes))
+        scheduler.run()
+    else:
+        process_urls(cfg, past_urls,hashes)
+
+
 
 
 if __name__ == "__main__":
